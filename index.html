@@ -108,105 +108,389 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:7px;borde
 </div>
 </div>
 
-<script src="Jennettes_Pier_Weather_Data.js"></script>
+
 <script>
-/*
-  The Python NOAA extraction script creates WEATHER_DATA in
-  Jennettes_Pier_Weather_Data.js. This dashboard converts the NOAA
-  fields into the shorter names used by the dashboard.
-*/
-const RAW_DATA = (typeof WEATHER_DATA !== "undefined") ? WEATHER_DATA : [];
+const DATA_URL =
+  "https://raw.githubusercontent.com/wxgirlie/JenettesPierRepository/main/Jennettes_Pier_Weather_Data.js";
 
-const DATA = RAW_DATA.map(x => ({
-  ...x,
-  date: x.begin_date_time || x.location_begin_date_time || "",
-  distance: x.distance_miles,
-  county: x.location || "",
-  narrative: x.event_narrative || "",
-  magnitude: x.magnitude,
-  latitude: x.latitude,
-  longitude: x.longitude,
-  event_type: x.event_type || "Unknown"
-}));
+let DATA = [];
 
-const pier={lat:35.9100,lon:-75.5917};
-const typeColors={};
-const palette=["#d9534f","#2878a8","#e6a23c","#6b58a5","#3c9d70","#d66b9b","#777","#2e8b8b"];
+const pier = {lat:35.9100, lon:-75.5917};
+const typeColors = {};
+const palette = [
+  "#d9534f","#2878a8","#e6a23c","#6b58a5",
+  "#3c9d70","#d66b9b","#777","#2e8b8b"
+];
 
-function setupTypes(data){
-  [...new Set(data.map(x=>x.event_type).filter(Boolean))].sort().forEach((t,i)=>typeColors[t]=palette[i%palette.length]);
-  const s=document.getElementById("type");
-  Object.keys(typeColors).forEach(t=>{let o=document.createElement("option");o.value=t;o.textContent=t;s.appendChild(o)});
-  document.getElementById("legend").innerHTML=Object.entries(typeColors).map(([t,c])=>`<span><i class="dot" style="background:${c}"></i>${t}</span>`).join("");
+async function loadWeatherData() {
+  const status = document.getElementById("details");
+
+  try {
+    status.innerHTML =
+      '<p class="small"><b>Loading NOAA Storm Events data...</b></p>';
+
+    const response = await fetch(
+      DATA_URL + "?v=" + Date.now(),
+      { cache: "no-store" }
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        "HTTP " + response.status + " while loading NOAA data."
+      );
+    }
+
+    const source = await response.text();
+
+    const start = source.indexOf("const WEATHER_DATA =");
+    const jsonStart = source.indexOf("[", start);
+    const jsonEnd = source.lastIndexOf("]");
+
+    if (start === -1 || jsonStart === -1 || jsonEnd === -1) {
+      throw new Error("WEATHER_DATA array was not found.");
+    }
+
+    const rawData = JSON.parse(
+      source.substring(jsonStart, jsonEnd + 1)
+    );
+
+    DATA = rawData.map(x => ({
+      ...x,
+      date: x.begin_date_time || x.location_begin_date_time || "",
+      distance: x.distance_miles,
+      county: x.location || "",
+      narrative: x.event_narrative || "",
+      magnitude: x.magnitude,
+      latitude: x.latitude,
+      longitude: x.longitude,
+      event_type: x.event_type || "Unknown"
+    }));
+
+    console.log("Jennette's Pier NOAA records loaded:", DATA.length);
+
+    setupTypes(DATA);
+    render();
+
+  } catch (error) {
+    console.error("NOAA data loading error:", error);
+
+    status.innerHTML =
+      '<p class="small" style="color:#b00020">' +
+      '<b>NOAA data could not be loaded.</b><br>' +
+      error.message +
+      '</p>';
+  }
 }
-function filtered(){
- const st=new Date(document.getElementById("start").value+"T00:00:00");
- const ev=document.getElementById("end").value;
- const en=ev?new Date(ev+"T23:59:59"):new Date("2999-12-31");
- const typ=document.getElementById("type").value;
- const rad=Number(document.getElementById("radius").value);
- return DATA.filter(x=>{
-   let d=new Date(x.date);
-   return d>=st&&d<=en&&(typ==="ALL"||x.event_type===typ)&&Number(x.distance)<=rad;
- }).sort((a,b)=>new Date(a.date)-new Date(b.date));
+
+function setupTypes(data) {
+  [...new Set(
+    data.map(x => x.event_type).filter(Boolean)
+  )].sort().forEach((t,i) => {
+    typeColors[t] = palette[i % palette.length];
+  });
+
+  const s = document.getElementById("type");
+
+  s.innerHTML = '<option value="ALL">All event types</option>';
+
+  Object.keys(typeColors).forEach(t => {
+    let o = document.createElement("option");
+    o.value = t;
+    o.textContent = t;
+    s.appendChild(o);
+  });
+
+  document.getElementById("legend").innerHTML =
+    Object.entries(typeColors)
+      .map(([t,c]) =>
+        `<span><i class="dot" style="background:${c}"></i>${t}</span>`
+      )
+      .join("");
 }
-function drawMap(data){
- const c=document.getElementById("mapCanvas"), r=c.getBoundingClientRect(), d=devicePixelRatio||1;
- c.width=r.width*d;c.height=r.height*d;let ctx=c.getContext("2d");ctx.scale(d,d);
- let w=r.width,h=r.height, cx=w/2,cy=h/2, scale=Math.min(w,h)/(2*55);
- ctx.fillStyle="#dceaf3";ctx.fillRect(0,0,w,h);
- ctx.strokeStyle="#aac0ce";ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,50*scale,0,Math.PI*2);ctx.stroke();
- ctx.fillStyle="#17324d";ctx.beginPath();ctx.arc(cx,cy,6,0,Math.PI*2);ctx.fill();
- ctx.fillStyle="#17324d";ctx.font="bold 12px Arial";ctx.fillText("Jennette's Pier",cx+9,cy-9);
- data.forEach((x,i)=>{
-   let dx=(Number(x.longitude)-pier.lon)*Math.cos(pier.lat*Math.PI/180)*69.0;
-   let dy=(Number(x.latitude)-pier.lat)*69.0;
-   let px=cx+dx*scale,py=cy-dy*scale;
-   if(px<0||px>w||py<0||py>h)return;
-   ctx.fillStyle=typeColors[x.event_type]||"#555";ctx.beginPath();ctx.arc(px,py,5,0,Math.PI*2);ctx.fill();
- });
+
+function filtered() {
+  const st = new Date(
+    document.getElementById("start").value + "T00:00:00"
+  );
+
+  const ev = document.getElementById("end").value;
+
+  const en = ev
+    ? new Date(ev + "T23:59:59")
+    : new Date("2999-12-31");
+
+  const typ = document.getElementById("type").value;
+  const rad = Number(
+    document.getElementById("radius").value
+  );
+
+  return DATA
+    .filter(x => {
+      const d = new Date(x.date);
+
+      return (
+        d >= st &&
+        d <= en &&
+        (typ === "ALL" || x.event_type === typ) &&
+        Number(x.distance) <= rad
+      );
+    })
+    .sort(
+      (a,b) =>
+        new Date(a.date) - new Date(b.date)
+    );
 }
-function showDetails(x){
- document.getElementById("details").innerHTML=`<b>${x.event_type||"Event"}</b><br>${x.date||""}<br>${x.county||x.location||""}<br>Distance: ${x.distance??"—"} mi<br>Magnitude: ${x.magnitude||"—"}<hr><div class="small">${x.narrative||"No narrative supplied."}</div>`;
+
+function drawMap(data) {
+  const c = document.getElementById("mapCanvas");
+  const r = c.getBoundingClientRect();
+  const d = devicePixelRatio || 1;
+
+  c.width = r.width * d;
+  c.height = r.height * d;
+
+  let ctx = c.getContext("2d");
+  ctx.scale(d,d);
+
+  let w = r.width;
+  let h = r.height;
+
+  let cx = w / 2;
+  let cy = h / 2;
+
+  let scale = Math.min(w,h) / (2 * 55);
+
+  ctx.fillStyle = "#dceaf3";
+  ctx.fillRect(0,0,w,h);
+
+  ctx.strokeStyle = "#aac0ce";
+  ctx.lineWidth = 2;
+
+  ctx.beginPath();
+  ctx.arc(
+    cx,
+    cy,
+    50 * scale,
+    0,
+    Math.PI * 2
+  );
+  ctx.stroke();
+
+  ctx.fillStyle = "#17324d";
+
+  ctx.beginPath();
+  ctx.arc(cx,cy,6,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.font = "bold 12px Arial";
+  ctx.fillText(
+    "Jennette's Pier",
+    cx + 9,
+    cy - 9
+  );
+
+  data.forEach(x => {
+
+    let dx =
+      (Number(x.longitude) - pier.lon) *
+      Math.cos(pier.lat * Math.PI / 180) *
+      69.0;
+
+    let dy =
+      (Number(x.latitude) - pier.lat) *
+      69.0;
+
+    let px = cx + dx * scale;
+    let py = cy - dy * scale;
+
+    if (
+      px < 0 ||
+      px > w ||
+      py < 0 ||
+      py > h
+    ) return;
+
+    ctx.fillStyle =
+      typeColors[x.event_type] || "#555";
+
+    ctx.beginPath();
+    ctx.arc(px,py,5,0,Math.PI*2);
+    ctx.fill();
+  });
 }
-function drawMonthly(data){
- const counts={};data.forEach(x=>{let k=(x.date||"").slice(0,7);counts[k]=(counts[k]||0)+1});
- const keys=Object.keys(counts).sort(), max=Math.max(1,...keys.map(k=>counts[k]));
- document.getElementById("monthly").innerHTML=keys.map(k=>`<div class="bar" style="height:${Math.max(3,counts[k]/max*210)}px" title="${k}: ${counts[k]} events"><i>${counts[k]}</i><span>${k.slice(5)}</span></div>`).join("");
-}
-function drawTimeline(data){
- const box=document.getElementById("timeline");box.innerHTML="";
- if(!data.length)return;
- let min=new Date(data[0].date).getTime(),max=new Date(data[data.length-1].date).getTime()||min+1;
- data.forEach((x,i)=>{
-  let t=new Date(x.date).getTime(), pct=max===min?50:(t-min)/(max-min)*96+2;
-  let dot=document.createElement("div");dot.className="eventdot";dot.style.left=pct+"%";dot.style.background=typeColors[x.event_type]||"#555";dot.onclick=()=>showDetails(x);
-  let lab=document.createElement("div");lab.className="eventlabel";lab.style.left=pct+"%";lab.textContent=x.event_type||"Event";
-  let dt=document.createElement("div");dt.className="eventdate";dt.style.left=pct+"%";dt.textContent=(x.date||"").slice(0,10);
-  box.append(dot,lab,dt);
- });
-}
-function drawTable(data){
- document.getElementById("rows").innerHTML=data.map((x,i)=>`<tr onclick='showDetails(DATA[${DATA.indexOf(x)}])' style="cursor:pointer"><td>${(x.date||"").slice(0,10)}</td><td>${x.event_type||""}</td><td>${x.county||x.location||""}</td><td>${x.distance??""}</td><td>${x.magnitude||""}</td></tr>`).join("");
-}
-function render(){
- const d=filtered();document.getElementById("total").textContent=d.length;
- document.getElementById("types").textContent=new Set(d.map(x=>x.event_type)).size;
- document.getElementById("closest").textContent=d.length?Math.min(...d.map(x=>Number(x.distance)).filter(Number.isFinite)).toFixed(1)+" mi":"—";
- drawMap(d);drawMonthly(d);drawTimeline(d);drawTable(d);
-}
-function resetFilters(){
- document.getElementById("start").value="2024-10-01";document.getElementById("end").value="";
- document.getElementById("type").value="ALL";document.getElementById("radius").value="50";render();
-}
-["start","end","type","radius"].forEach(id=>document.getElementById(id).addEventListener("change",render));
-if (!DATA.length) {
+
+function showDetails(x) {
   document.getElementById("details").innerHTML =
-    '<p class="small"><b>No dashboard data loaded.</b><br>' +
-    'Place Jennettes_Pier_Weather_Data.js in the same folder as this HTML file, then reopen the dashboard.</p>';
+    `<b>${x.event_type || "Event"}</b><br>` +
+    `${x.date || ""}<br>` +
+    `${x.county || x.location || ""}<br>` +
+    `Distance: ${x.distance ?? "—"} mi<br>` +
+    `Magnitude: ${x.magnitude || "—"}` +
+    `<hr>` +
+    `<div class="small">` +
+    `${x.narrative || "No narrative supplied."}` +
+    `</div>`;
 }
-setupTypes(DATA);
-render();
+
+function drawMonthly(data) {
+  const counts = {};
+
+  data.forEach(x => {
+    let k = (x.date || "").slice(0,7);
+    counts[k] = (counts[k] || 0) + 1;
+  });
+
+  const keys = Object.keys(counts).sort();
+
+  const max = Math.max(
+    1,
+    ...keys.map(k => counts[k])
+  );
+
+  document.getElementById("monthly").innerHTML =
+    keys.map(k =>
+      `<div class="bar"
+        style="height:${Math.max(
+          3,
+          counts[k] / max * 210
+        )}px"
+        title="${k}: ${counts[k]} events">
+
+        <i>${counts[k]}</i>
+        <span>${k.slice(5)}</span>
+
+      </div>`
+    ).join("");
+}
+
+function drawTimeline(data) {
+  const box =
+    document.getElementById("timeline");
+
+  box.innerHTML = "";
+
+  if (!data.length) return;
+
+  let min =
+    new Date(data[0].date).getTime();
+
+  let max =
+    new Date(data[data.length-1].date).getTime()
+    || min + 1;
+
+  data.forEach(x => {
+
+    let t =
+      new Date(x.date).getTime();
+
+    let pct =
+      max === min
+        ? 50
+        : (t-min)/(max-min)*96+2;
+
+    let dot =
+      document.createElement("div");
+
+    dot.className = "eventdot";
+    dot.style.left = pct + "%";
+    dot.style.background =
+      typeColors[x.event_type] || "#555";
+
+    dot.onclick = () =>
+      showDetails(x);
+
+    let lab =
+      document.createElement("div");
+
+    lab.className = "eventlabel";
+    lab.style.left = pct + "%";
+    lab.textContent =
+      x.event_type || "Event";
+
+    let dt =
+      document.createElement("div");
+
+    dt.className = "eventdate";
+    dt.style.left = pct + "%";
+    dt.textContent =
+      (x.date || "").slice(0,10);
+
+    box.append(dot,lab,dt);
+  });
+}
+
+function drawTable(data) {
+  document.getElementById("rows").innerHTML =
+    data.map(x =>
+      `<tr onclick='showDetails(DATA[${DATA.indexOf(x)}])'
+           style="cursor:pointer">
+
+        <td>${(x.date || "").slice(0,10)}</td>
+        <td>${x.event_type || ""}</td>
+        <td>${x.county || x.location || ""}</td>
+        <td>${x.distance ?? ""}</td>
+        <td>${x.magnitude || ""}</td>
+
+      </tr>`
+    ).join("");
+}
+
+function render() {
+
+  const d = filtered();
+
+  document.getElementById("total").textContent =
+    d.length;
+
+  document.getElementById("types").textContent =
+    new Set(
+      d.map(x => x.event_type)
+    ).size;
+
+  const distances =
+    d.map(x => Number(x.distance))
+     .filter(Number.isFinite);
+
+  document.getElementById("closest").textContent =
+    distances.length
+      ? Math.min(...distances).toFixed(1) + " mi"
+      : "—";
+
+  drawMap(d);
+  drawMonthly(d);
+  drawTimeline(d);
+  drawTable(d);
+}
+
+function resetFilters() {
+
+  document.getElementById("start").value =
+    "2024-10-01";
+
+  document.getElementById("end").value =
+    "";
+
+  document.getElementById("type").value =
+    "ALL";
+
+  document.getElementById("radius").value =
+    "50";
+
+  render();
+}
+
+["start","end","type","radius"].forEach(id =>
+  document
+    .getElementById(id)
+    .addEventListener("change",render)
+);
+
+window.addEventListener(
+  "resize",
+  () => drawMap(filtered())
+);
+
+loadWeatherData();
 </script>
 
 <section id="methodology" class="methodology">

@@ -37,8 +37,22 @@ table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:7px;borde
 #details{max-height:360px;overflow:auto}
 @media(max-width:950px){.grid{grid-template-columns:1fr}.statgrid{grid-template-columns:repeat(2,1fr)}}
 </style>
+
+<style>
+.project-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:12px 0 18px}
+.project-info div{padding:12px;border:1px solid rgba(128,128,128,.28);border-radius:10px;background:rgba(128,128,128,.06)}
+.methodology{margin:18px 0}.methodology details{border:1px solid rgba(128,128,128,.28);border-radius:10px;padding:10px 14px}
+.methodology summary{cursor:pointer}.methodology p{line-height:1.5}
+</style>
 </head>
 <body>
+<section id="projectInfo" class="project-info">
+  <div><strong>Data source</strong><br>NOAA / NCEI Storm Events Database</div>
+  <div><strong>Reference</strong><br>Jennette's Pier — 35.9100, -75.5917</div>
+  <div><strong>Study radius</strong><br>50 statute miles</div>
+  <div><strong>Start date</strong><br>October 1, 2024</div>
+</section>
+
 <header>
 <h1>Jennette's Pier Weather Events</h1>
 <p>NOAA Storm Events • 50-mile radius • October 2024 through latest available records</p>
@@ -194,5 +208,16 @@ if (!DATA.length) {
 setupTypes(DATA);
 render();
 </script>
+
+<section id="methodology" class="methodology">
+  <details>
+    <summary><strong>About this dataset</strong></summary>
+    <p>This dashboard displays NOAA/NCEI Storm Events records with a reported
+    location within 50 statute miles of Jennette's Pier.</p>
+    <p>When an event has multiple qualifying reported locations, the closest
+    reported location is used for the main event record. Distance is calculated
+    using great-circle (Haversine) distance.</p>
+  </details>
+</section>
 </body>
 </html>
